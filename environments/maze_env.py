@@ -50,6 +50,12 @@ class MazeEnv(gym.Env):
       **kwargs):
     self._maze_id = maze_id
 
+    #my changes
+    self.metadata = {
+            "render_modes": ["human", "rgb_array", "depth_array"],
+            "render_fps": int(np.round(1.0 / self.dt)),
+        }
+
     model_cls = self.__class__.MODEL_CLASS
     if model_cls is None:
       raise "MODEL_CLASS unspecified!"
