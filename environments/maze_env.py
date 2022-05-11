@@ -53,7 +53,7 @@ class MazeEnv(gym.Env):
     #my changes
     self.metadata = {
             "render_modes": ["human", "rgb_array", "depth_array"],
-            "render_fps": int(np.round(1.0 / self.dt)),
+            "render_fps": int(np.round(1.0 / 0.02)),
         }
 
     model_cls = self.__class__.MODEL_CLASS
