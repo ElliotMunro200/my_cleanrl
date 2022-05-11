@@ -19,6 +19,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 #from torch.utils.tensorboard import SummaryWriter
 
 from environments.create_maze_env_cleanrl import create_maze_env
+from cleanrl_utils.my_helpers import train_log
 
 def parse_args():
     # fmt: off
@@ -65,6 +66,8 @@ def parse_args():
         help="the frequency of training policy (delayed)")
     parser.add_argument("--noise-clip", type=float, default=0.5,
         help="noise clip parameter of the Target Policy Smoothing Regularization")
+    parser.add_argument("--watch-nets", type=bool, default=False,
+                        help="Whether or not to watch nets and log params and gradients")
     args = parser.parse_args()
     # fmt: on
     return args
@@ -124,8 +127,8 @@ if __name__ == "__main__":
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
-
-        wandb.init(
+        
+        run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
@@ -136,8 +139,9 @@ if __name__ == "__main__":
         )
     #writer = SummaryWriter(f"runs/{run_name}")
     #writer.add_text(
-     #   "hyperparameters",
-     #   "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+
+    #    "hyperparameters",
+    #    "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     #)
 
     # TRY NOT TO MODIFY: seeding
@@ -161,6 +165,9 @@ if __name__ == "__main__":
     qf1_target.load_state_dict(qf1.state_dict())
     q_optimizer = optim.Adam(list(qf1.parameters()), lr=args.learning_rate)
     actor_optimizer = optim.Adam(list(actor.parameters()), lr=args.learning_rate)
+    if args.track and args.watch_nets:
+        wandb.watch((actor, qf1, target_actor, qf1_target), log="all",
+                    log_freq=10)
 
     envs.single_observation_space.dtype = np.float32
     rb = ReplayBuffer(args.buffer_size, envs.single_observation_space, envs.single_action_space, device=device)
@@ -184,11 +191,16 @@ if __name__ == "__main__":
             )
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, dones, infos = envs.step(actions)
+        #print(infos)
+        #recording = np.array([_.recording for _ in envs.envs])
+        #print(recording)
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         for info in infos:
             if "episode" in info.keys():
-                print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                episode_reward = info['episode']['r']
+                print(f"global_step={global_step}, episodic_return={episode_reward}")
+                train_log("episodic_return", episode_reward, global_step)
                 #writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 break
 
@@ -235,11 +247,16 @@ if __name__ == "__main__":
                     target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
 
             if global_step % 100 == 0:
+                train_log("qf1_loss", qf1_loss.item(), global_step)
+                train_log("actor_loss", actor_loss.item(), global_step)
+                train_log("SPS", int(global_step / (time.time() - start_time)), global_step)
+                print("SPS:", int(global_step / (time.time() - start_time)))
                 #writer.add_scalar("losses/qf1_loss", qf1_loss.item(), global_step)
                 #writer.add_scalar("losses/actor_loss", actor_loss.item(), global_step)
                 #writer.add_scalar("losses/qf1_values", qf1_a_values.mean().item(), global_step)
-                print("SPS:", int(global_step / (time.time() - start_time)))
                 #writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     envs.close()
+    if args.track:
+        run.finish()
     #writer.close()
